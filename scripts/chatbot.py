@@ -1,75 +1,116 @@
 import os
+import logging
 from dotenv import load_dotenv
-
-from langchain_community.vectorstores import FAISS
+from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
+from langchain.schema import Document
 from langchain.prompts import ChatPromptTemplate
+from langchain.schema import BaseRetriever, Document
+from typing import List, Optional
+import asyncio
 
-import openai
+# Import paths from ingest.py
+from scripts.ingest import PDF_DIRECTORY, CHROMA_STORE_PATH
 
-# Load environment variables
+logger = logging.getLogger(__name__)
 load_dotenv()
 
-# Set up OpenRouter configuration
+# Load API key
 api_key = os.getenv("OPENROUTER_API_KEY")
 if not api_key:
     raise ValueError("OPENROUTER_API_KEY not found in environment.")
 
-openai.api_key = api_key
-openai.api_base = "https://openrouter.ai/api/v1"
 os.environ["OPENAI_API_KEY"] = api_key
 os.environ["OPENAI_API_BASE"] = "https://openrouter.ai/api/v1"
-os.environ["HTTP_REFERER"] = "https://yourdomain.com"
-os.environ["X_TITLE"] = "KimiChatBot"
 
-# Load FAISS vectorstore
+# Embeddings
 embedder = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-vectorstore = FAISS.load_local("faiss_store", embedder, allow_dangerous_deserialization=True)
 
-# Initialize Chat Model
-llm = ChatOpenAI(model="tngtech/deepseek-r1t2-chimera:free")
+# Global Chroma store
+global_vectorstore = None
 
-# Prompt Template (includes memory variable)
+def initialize_vectorstore():
+    """Load Chroma vector store from disk."""
+    global global_vectorstore
+    try:
+        if os.path.exists(CHROMA_STORE_PATH):
+            logger.info(f"Loading Chroma vector store from {CHROMA_STORE_PATH}...")
+            global_vectorstore = Chroma(
+                persist_directory=CHROMA_STORE_PATH,
+                embedding_function=embedder
+            )
+            logger.info("Chroma vector store loaded successfully.")
+        else:
+            logger.warning("No Chroma store found, creating minimal store...")
+            global_vectorstore = Chroma.from_texts(
+                ["initial setup text."],
+                embedding=embedder,
+                persist_directory=CHROMA_STORE_PATH
+            )
+    except Exception as e:
+        logger.error(f"Failed to load Chroma store: {e}")
+        global_vectorstore = Chroma.from_texts(
+            ["initial setup text."],
+            embedding=embedder,
+            persist_directory=CHROMA_STORE_PATH
+        )
+
+def update_vectorstore(new_vectorstore: Chroma):
+    """Update the in-memory Chroma vector store."""
+    global global_vectorstore
+    global_vectorstore = new_vectorstore
+    logger.info("Global Chroma vector store updated.")
+
+# Chat model
+llm = ChatOpenAI(model="mistralai/mistral-7b-instruct-v0.1")
+
+# Prompt template
 prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are Kimi, a helpful and thoughtful assistant. 
-Keep your responses clear, concise, and professional.
-Do not summarize or comment on documents unless explicitly asked. 
-Avoid excessive emojis or overly casual tone. 
-Maintain proper spacing and indentation.
+    ("system", """You are Kimi, a helpful and thoughtful assistant.
+Use your general knowledge to answer questions, but prioritize provided context.
 
 Context:
 {context}"""),
     ("human", "{question}\n\nPrevious chat: {chat_history}")
 ])
+
 # Memory
 memory = ConversationBufferMemory(
     memory_key="chat_history",
     return_messages=True,
-    input_key="question"
+    input_key="question",
+    max_token_limit=500
 )
 
-# RetrievalQA Chain with memory
+async def get_retriever_with_filter(active_documents: Optional[List[str]] = None) -> BaseRetriever:
+    """Return a Chroma retriever, optionally filtered by document source."""
+    if global_vectorstore is None:
+        logger.warning("Global vector store not initialized. Using minimal retriever.")
+        dummy_store = Chroma.from_texts(["initial setup text."], embedding=embedder)
+        return dummy_store.as_retriever(search_kwargs={"k": 3})
+
+    if active_documents:
+        logger.info(f"Filtering retriever by documents: {active_documents}")
+        return global_vectorstore.as_retriever(search_kwargs={"k": 3, "filter": {"source": {"$in": active_documents}}})
+    return global_vectorstore.as_retriever(search_kwargs={"k": 3})
+
+# Build chain
+from langchain.schema import Document
+
+class EmptyRetriever(BaseRetriever):
+    async def _aget_relevant_documents(self, query: str):
+        return [Document(page_content="No context available yet.")]
+    def _get_relevant_documents(self, query: str):
+        return [Document(page_content="No context available yet.")]
+
+initialize_vectorstore()
+
 chain = ConversationalRetrievalChain.from_llm(
     llm=llm,
-    retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
+    retriever=(global_vectorstore.as_retriever(search_kwargs={"k": 3}) if global_vectorstore else EmptyRetriever()),
     memory=memory,
     combine_docs_chain_kwargs={"prompt": prompt}
 )
-
-if __name__ == "__main__":
-    print("\U0001F9E0 Kimi Chatbot")
-    print("Type 'exit' to quit.\n")
-
-    while True:
-        query = input("You: ")
-        if query.lower() == "exit":
-            print("\U0001F44B Goodbye!")
-            break
-        try:
-            response = chain.invoke({"question": query})
-            print(f"Kimi: {response['answer']}\n")
-        except Exception as e:
-            print(f"[Error] {e}\n")

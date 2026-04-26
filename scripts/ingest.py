@@ -1,38 +1,63 @@
 import os
+import logging
+import asyncio
+from functools import partial
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 
-# ───────────────────────────────────────────────────────────────────────────────
-# 📄 Load PDF (Update filename if different)
-# ───────────────────────────────────────────────────────────────────────────────
-pdf_path = "data/project_gen_2 (3).pdf"  # Change this if needed
+logger = logging.getLogger(__name__)
 
-if not os.path.exists(pdf_path):
-    raise FileNotFoundError(f"PDF file not found at {pdf_path}")
+SCRIPT_DIR = os.path.dirname(__file__)
+PDF_DIRECTORY = os.path.join(SCRIPT_DIR, "data")
+CHROMA_STORE_PATH = os.path.join(SCRIPT_DIR, "chroma_store")  # Persistent Chroma storage
 
-loader = PyPDFLoader(pdf_path)
-documents = loader.load()
+async def rebuild_vectorstore():
+    logger.info(f"Starting async Chroma vector store rebuild from {PDF_DIRECTORY}...")
+    loop = asyncio.get_running_loop()
 
-# ───────────────────────────────────────────────────────────────────────────────
-# ✂️ Split into Chunks
-# ───────────────────────────────────────────────────────────────────────────────
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=500,
-    chunk_overlap=50,
-    separators=["\n\n", "\n", " ", ""],
-)
+    os.makedirs(PDF_DIRECTORY, exist_ok=True)
 
-chunks = text_splitter.split_documents(documents)
+    all_documents = []
+    files_in_dir = await loop.run_in_executor(None, os.listdir, PDF_DIRECTORY)
 
-# ───────────────────────────────────────────────────────────────────────────────
-# 🤖 Embeddings and FAISS Index
-# ───────────────────────────────────────────────────────────────────────────────
-embedder = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-vectorstore = FAISS.from_documents(chunks, embedding=embedder)
+    for filename in files_in_dir:
+        if filename.endswith(".pdf"):
+            pdf_path = os.path.join(PDF_DIRECTORY, filename)
+            logger.info(f"Loading document: {pdf_path}")
+            loader = PyPDFLoader(pdf_path)
+            documents = await loop.run_in_executor(None, loader.load)
 
-# 🧠 Save to disk
-vectorstore.save_local("faiss_store")
+            for doc in documents:
+                doc.metadata["source"] = filename
+            all_documents.extend(documents)
 
-print("✅ FAISS index created and saved successfully.")
+    if not all_documents:
+        logger.warning("No PDF documents found. Creating minimal vector store.")
+        embedder = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        vs = Chroma.from_texts(
+            ["initial setup text."],
+            embedding=embedder,
+            persist_directory=CHROMA_STORE_PATH
+        )
+        vs.persist()
+        return vs
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=50
+    )
+    chunks = await loop.run_in_executor(None, text_splitter.split_documents, all_documents)
+
+    embedder = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+    vectorstore = Chroma.from_documents(
+        documents=chunks,
+        embedding=embedder,
+        persist_directory=CHROMA_STORE_PATH
+    )
+    
+
+    logger.info("✅ Chroma vector store built and persisted successfully.")
+    return vectorstore
