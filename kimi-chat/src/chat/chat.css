@@ -1,0 +1,492 @@
+@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap");
+
+.ch {
+  --ch-ink: #1f2233;
+  --ch-ink-soft: #4a4f6a;
+  --ch-muted: #6b7090;
+  --ch-line: #e4e6f2;
+  --ch-surface: #ffffff;
+  --ch-wash: #f6f7fc;
+  --ch-user: #eceffd;
+  --ch-accent: var(--primary-color, #4361ee);
+  --ch-accent-deep: var(--secondary-color, #3f37c9);
+  --ch-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --ch-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  color: var(--ch-ink);
+}
+
+.ch-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 4px 24px;
+  scrollbar-gutter: stable;
+}
+
+/* ---------- Empty state ---------- */
+.ch-empty {
+  max-width: 560px;
+  margin: 9vh auto 0;
+  text-align: center;
+  padding: 0 12px;
+}
+.ch-mark {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(140deg, var(--ch-accent), var(--ch-accent-deep));
+  box-shadow: 0 6px 18px rgba(67, 97, 238, 0.28);
+}
+.ch-empty h2 {
+  font-family: var(--ch-serif);
+  font-weight: 600;
+  font-size: 1.85rem;
+  letter-spacing: -0.015em;
+  margin: 0 0 10px;
+  text-wrap: balance;
+}
+.ch-empty p {
+  margin: 0 auto;
+  max-width: 44ch;
+  color: var(--ch-muted);
+  line-height: 1.55;
+  font-size: 0.95rem;
+}
+.ch-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 28px;
+}
+.ch-suggestions button {
+  text-align: left;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--ch-ink-soft);
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-line);
+  border-radius: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+.ch-suggestions button:hover {
+  border-color: #c9cff5;
+  background: var(--ch-wash);
+  color: var(--ch-ink);
+}
+
+/* ---------- Thread ---------- */
+.ch-thread {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding-top: 8px;
+}
+
+.ch-user {
+  display: flex;
+  justify-content: flex-end;
+  animation: ch-rise 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.ch-user-bubble {
+  max-width: min(78%, 560px);
+  background: var(--ch-user);
+  color: var(--ch-ink);
+  padding: 11px 16px;
+  border-radius: 18px 18px 6px 18px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ch-bot {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.ch-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(140deg, var(--ch-accent), var(--ch-accent-deep));
+  margin-top: 2px;
+}
+.ch-bot.is-error .ch-avatar {
+  background: #c2410c;
+}
+.ch-bot-body {
+  min-width: 0;
+}
+
+/* ---------- Answer typography ---------- */
+.ch-prose {
+  font-family: var(--ch-serif);
+  font-size: 1.04rem;
+  line-height: 1.68;
+  color: var(--ch-ink);
+  max-width: 70ch;
+  overflow-wrap: anywhere;
+}
+.ch-prose > :first-child {
+  margin-top: 0;
+}
+.ch-prose > :last-child {
+  margin-bottom: 0;
+}
+.ch-prose p {
+  margin: 0 0 0.85em;
+}
+.ch-prose h1,
+.ch-prose h2,
+.ch-prose h3,
+.ch-prose h4 {
+  font-family: var(--ch-serif);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 1.35em 0 0.45em;
+  color: var(--ch-ink);
+}
+.ch-prose h1 { font-size: 1.4rem; }
+.ch-prose h2 { font-size: 1.25rem; }
+.ch-prose h3 { font-size: 1.1rem; }
+.ch-prose h4 { font-size: 1rem; }
+.ch-prose ul,
+.ch-prose ol {
+  margin: 0 0 0.9em;
+  padding-left: 1.4em;
+}
+.ch-prose li {
+  margin: 0.3em 0;
+  padding-left: 0.15em;
+}
+.ch-prose li::marker {
+  color: var(--ch-muted);
+}
+.ch-prose strong {
+  font-weight: 650;
+}
+.ch-prose a {
+  color: var(--ch-accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(63, 55, 201, 0.35);
+}
+.ch-prose blockquote {
+  margin: 0 0 0.9em;
+  padding: 2px 0 2px 16px;
+  border-left: 2px solid var(--ch-line);
+  color: var(--ch-ink-soft);
+  font-style: italic;
+}
+.ch-prose hr {
+  border: 0;
+  border-top: 1px solid var(--ch-line);
+  margin: 1.4em 0;
+}
+.ch-inline-code {
+  font-family: var(--ch-mono);
+  font-size: 0.84em;
+  background: #f0f1f8;
+  border: 1px solid #e6e8f3;
+  border-radius: 5px;
+  padding: 0.1em 0.35em;
+}
+
+.ch-code {
+  margin: 0.4em 0 1em;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #191b29;
+  font-family: var(--ch-mono);
+  box-shadow: 0 2px 10px rgba(25, 27, 41, 0.12);
+}
+.ch-code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px 7px 14px;
+  background: #23263a;
+  color: #a9adc8;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+.ch-code-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  color: #c9ccdf;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.ch-code-bar button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.ch-code pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  color: #e7e9f6;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.ch-table-wrap {
+  overflow-x: auto;
+  margin: 0.3em 0 1em;
+  border: 1px solid var(--ch-line);
+  border-radius: 10px;
+}
+.ch-prose table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: "Montserrat", system-ui, sans-serif;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+.ch-prose th,
+.ch-prose td {
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--ch-line);
+  vertical-align: top;
+}
+.ch-prose th {
+  background: var(--ch-wash);
+  font-weight: 600;
+  color: var(--ch-ink-soft);
+}
+.ch-prose tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Streaming caret */
+.ch-prose.is-streaming > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: 2px;
+  background: var(--ch-accent);
+  animation: ch-blink 1s steps(2, start) infinite;
+}
+
+.ch-bot.is-error .ch-prose {
+  font-family: "Montserrat", system-ui, sans-serif;
+  font-size: 0.92rem;
+  color: #9a3412;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.ch-thinking {
+  display: flex;
+  gap: 5px;
+  padding: 10px 0;
+}
+.ch-thinking span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ch-accent);
+  opacity: 0.35;
+  animation: ch-pulse 1.2s ease-in-out infinite;
+}
+.ch-thinking span:nth-child(2) { animation-delay: 0.15s; }
+.ch-thinking span:nth-child(3) { animation-delay: 0.3s; }
+
+.ch-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 8px;
+  margin-left: -6px;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+.ch-bot:hover .ch-actions,
+.ch-actions:focus-within {
+  opacity: 1;
+}
+.ch-actions button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ch-muted);
+  cursor: pointer;
+}
+.ch-actions button:hover {
+  background: #eef0f8;
+  color: var(--ch-ink);
+}
+
+/* ---------- Composer ---------- */
+.ch-composer-wrap {
+  flex-shrink: 0;
+  padding-top: 10px;
+}
+.ch-composer {
+  max-width: 760px;
+  margin: 0 auto;
+  background: var(--ch-surface);
+  border: 1px solid #dcdff0;
+  border-radius: 20px;
+  padding: 12px 12px 10px 16px;
+  box-shadow: 0 4px 18px rgba(31, 34, 51, 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ch-composer:focus-within {
+  border-color: #b9c1f3;
+  box-shadow: 0 6px 22px rgba(67, 97, 238, 0.12);
+}
+.ch-composer textarea {
+  display: block;
+  width: 100%;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: var(--ch-ink);
+  max-height: 200px;
+  padding: 2px 0;
+}
+.ch-composer textarea::placeholder {
+  color: #7a7f9c;
+}
+.ch-composer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+.ch-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 60%;
+  font-size: 0.78rem;
+  color: var(--ch-muted);
+  background: var(--ch-wash);
+  border: 1px solid var(--ch-line);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.ch-source span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch-composer-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ch-ghost {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--ch-muted);
+  cursor: pointer;
+}
+.ch-ghost:hover {
+  background: #eef0f8;
+  color: var(--ch-ink);
+}
+.ch-send {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 0;
+  cursor: pointer;
+  color: #fff;
+  background: var(--ch-accent);
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.ch-send:hover:not(:disabled) {
+  background: var(--ch-accent-deep);
+}
+.ch-send:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.ch-send:disabled {
+  background: #c9cde4;
+  cursor: not-allowed;
+}
+.ch-send.is-stop {
+  background: var(--ch-ink);
+}
+.ch-footnote {
+  text-align: center;
+  font-size: 0.72rem;
+  color: #6f7493;
+  margin: 8px 0 0;
+}
+
+.ch button:focus-visible {
+  outline: 2px solid var(--ch-accent);
+  outline-offset: 2px;
+}
+/* The composer frame shows focus for its textarea. */
+.ch .ch-composer textarea:focus,
+.ch .ch-composer textarea:focus-visible {
+  outline: none;
+}
+
+@keyframes ch-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ch-blink {
+  to { visibility: hidden; }
+}
+@keyframes ch-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.85); }
+  50% { opacity: 0.9; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ch-user,
+  .ch-thinking span,
+  .ch-prose.is-streaming > :last-child::after {
+    animation: none;
+  }
+}

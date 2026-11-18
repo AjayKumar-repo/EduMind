@@ -7,12 +7,14 @@ from typing import List, Optional
 import pypdf
 from fastapi import FastAPI, File, HTTPException, Path, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 # llm_config loads .env, so import it before anything that reads settings.
 from scripts.llm_config import CHAT_MODEL, TEST_MODEL, UTILITY_MODEL, LLMError, get_api_key, openrouter_chat
 from scripts.assessment import router as assessment_router
-from scripts.chatbot import answer_question, clear_history
+from scripts.chatbot import answer_question, clear_history, stream_answer
+from scripts.studio import build_audio_script, build_mindmap
 from scripts.ingest import PDF_DIRECTORY, rebuild_vectorstore
 from scripts.reports_feature import router as reports_router
 from scripts.test_feature import create_mcq_test
@@ -69,6 +71,11 @@ def llm_http_error(e: Exception) -> HTTPException:
 class ChatRequest(BaseModel):
     message: str
     active_documents: Optional[List[str]] = None
+    learning_style: Optional[str] = None
+
+
+class StudioRequest(BaseModel):
+    documents: List[str]
 
 
 class GenerateTestRequest(BaseModel):
@@ -101,11 +108,48 @@ async def chat_endpoint(req: ChatRequest):
         raise HTTPException(status_code=400, detail="Message is empty.")
     logging.info(f"Chat request (documents: {req.active_documents})")
     try:
-        answer = await answer_question(req.message, req.active_documents)
+        answer = await answer_question(req.message, req.active_documents, req.learning_style)
         return {"answer": answer}
     except Exception as e:
         logging.error(f"Chat endpoint error: {e}", exc_info=not isinstance(e, LLMError))
         raise llm_http_error(e)
+
+
+_STREAM_END = object()
+
+
+@app.post("/chat/stream")
+async def chat_stream_endpoint(req: ChatRequest):
+    """Stream the answer as plain text chunks while it is being written."""
+    if not req.message.strip():
+        raise HTTPException(status_code=400, detail="Message is empty.")
+    logging.info(f"Streaming chat request (documents: {req.active_documents})")
+    generator = stream_answer(req.message, req.active_documents, req.learning_style)
+
+    # Pull the first chunk before responding, so a bad key or model surfaces as a proper HTTP error.
+    try:
+        first = await asyncio.to_thread(next, generator, _STREAM_END)
+    except Exception as e:
+        logging.error(f"Chat stream error: {e}", exc_info=not isinstance(e, LLMError))
+        raise llm_http_error(e)
+
+    def rest():
+        if first is _STREAM_END:
+            return
+        yield first
+        try:
+            yield from generator
+        except LLMError as e:
+            yield f"\n\n⚠️ {e}"
+        except Exception as e:
+            logging.error(f"Chat stream interrupted: {e}", exc_info=True)
+            yield "\n\n⚠️ The answer was interrupted. Please try again."
+
+    return StreamingResponse(
+        rest(),
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/chat/reset")
@@ -218,6 +262,44 @@ async def get_document_text(doc_name: str):
     if not text_content.strip():
         raise HTTPException(status_code=422, detail="No text could be extracted from this PDF (it may be scanned images).")
     return {"content": text_content}
+
+
+def _gather_documents_text(names: List[str]) -> str:
+    parts = []
+    for name in names:
+        path = safe_pdf_path(name)
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail=f"Document not found: {name}")
+        parts.append(f"## {name}\n{_extract_pdf_text(path)}")
+    text = "\n\n".join(parts)
+    if not text.replace("#", "").strip():
+        raise HTTPException(status_code=422, detail="No text could be extracted from the selected documents.")
+    return text
+
+
+async def _run_studio(req: StudioRequest, builder, label: str):
+    if not req.documents:
+        raise HTTPException(status_code=400, detail="Select at least one document in Sources first.")
+    text = await asyncio.to_thread(_gather_documents_text, req.documents)
+    try:
+        return await asyncio.to_thread(builder, text, req.documents)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logging.error(f"{label} error: {e}", exc_info=not isinstance(e, LLMError))
+        raise llm_http_error(e)
+
+
+@app.post("/studio/mindmap")
+async def mindmap_endpoint(req: StudioRequest):
+    """Build a hierarchical mind map of the selected documents."""
+    return await _run_studio(req, build_mindmap, "Mind map")
+
+
+@app.post("/studio/audio-overview")
+async def audio_overview_endpoint(req: StudioRequest):
+    """Write a two-host podcast script about the selected documents (spoken in the browser)."""
+    return await _run_studio(req, build_audio_script, "Audio overview")
 
 
 @app.get("/documents")

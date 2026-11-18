@@ -1,15 +1,19 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import ReactMarkdown from 'react-markdown';
+import {
+  BarChart3, Brain, ChevronRight, ClipboardCheck, Ear, Eye, FileText, Hand, Headphones,
+  MessageSquare, Network, NotebookPen, Plus, Sparkles, X,
+} from "lucide-react";
 import TestFeature from './TestFeature';
 import ReportsFeature from './ReportsFeature';
 import LoadingIndicator from './LoadingIndicator';
 import LoginPage from './LoginPage'; // Import the new Login page
+import ChatView, { ChatMessage, newMessageId } from './chat/ChatView';
+import AudioOverview from './studio/AudioOverview';
+import MindMap from './studio/MindMap';
 
 // Types
-type Message = {
-  sender: 'user' | 'bot';
-  text: string;
-};
+type Message = ChatMessage;
 
 type Question = {
   question: string;
@@ -123,55 +127,6 @@ const apiService = {
 };
 
 // Components
-const CodeBlock: React.FC<{
-  node?: any;
-  inline?: boolean;
-  className?: string;
-  children?: any;
-}> = ({ node, inline, className, children, ...props }) => {
-  const match = /language-(\w+)/.exec(className || '');
-  const codeContent = String(children).replace(/\n$/, '');
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(codeContent)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(err => console.error('Failed to copy text: ', err));
-  }, [codeContent]);
-
-  return !inline && match ? (
-    <div className="code-block-container">
-      <div className="code-block-header">
-        <span className="code-language">{match[1]}</span>
-        <button onClick={handleCopy} className="copy-button">
-          {copied ? 'Copied!' : 'Copy'}
-        </button>
-      </div>
-      <pre className="code-block-content">
-        <code>{codeContent}</code>
-      </pre>
-    </div>
-  ) : (
-    <code className={className} {...props}>
-      {children}
-    </code>
-  );
-};
-
-const ChatMessage: React.FC<{ message: Message }> = ({ message }) => (
-  <div className={`chat-message ${message.sender} fade-in`}>
-    <strong className="chat-message-sender">
-      {message.sender === "user" ? "You" : "Gen 2"}:
-    </strong>
-    <ReactMarkdown components={{ code: CodeBlock }}>
-      {message.text}
-    </ReactMarkdown>
-  </div>
-);
-
 const DocumentItem: React.FC<{
   document: Document;
   onToggle: (docName: string) => void;
@@ -185,14 +140,18 @@ const DocumentItem: React.FC<{
         onChange={() => onToggle(document.name)}
       />
       <span className="checkmark"></span>
-      <span className="document-name">{document.name}</span>
+      <FileText size={15} className="document-file-icon" aria-hidden="true" />
+      <span className="document-name" title={document.name}>{document.name}</span>
     </label>
-    <span
+    <button
+      type="button"
       className="delete-icon"
       onClick={() => onDelete(document.name)}
+      aria-label={`Delete ${document.name}`}
+      title="Delete source"
     >
-      ✕
-    </span>
+      <X size={14} />
+    </button>
   </div>
 );
 
@@ -201,11 +160,10 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isTakingCompulsoryAssessment, setIsTakingCompulsoryAssessment] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const chatBoxRef = useRef<HTMLDivElement>(null);
   const notesTextAreaRef = useRef<HTMLTextAreaElement>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentView, setCurrentView] = useState<"chat" | "assessment" | "upload" | "documents" | "test" | "reports">("chat");
+  const [currentView, setCurrentView] = useState<"chat" | "assessment" | "upload" | "documents" | "test" | "reports" | "mindmap">("chat");
+  const [studioPanel, setStudioPanel] = useState<"audio" | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
@@ -234,12 +192,6 @@ const App: React.FC = () => {
   }, [dailyQuote]);
 
   // Effects
-  useEffect(() => {
-    if (chatBoxRef.current) {
-      chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight;
-    }
-  }, [messages, currentView]);
-
   useEffect(() => {
     if (!isAuthenticated) return; // Don't fetch data if not logged in
 
@@ -305,10 +257,10 @@ const App: React.FC = () => {
 
   const getLearnerIcon = (style: string) => {
     switch (style.toLowerCase()) {
-        case 'pictorial': return '👁️';
-        case 'vocal': return '👂';
-        case 'kinesthetic': return '🖐️';
-        case 'memorizer': return '🧠';
+        case 'pictorial': return <Eye size={15} />;
+        case 'vocal': return <Ear size={15} />;
+        case 'kinesthetic': return <Hand size={15} />;
+        case 'memorizer': return <Brain size={15} />;
         default: return null;
     }
   };
@@ -330,34 +282,7 @@ const App: React.FC = () => {
   }
 };
 
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
-
-    const userMessage: Message = { sender: "user", text: input };
-    setMessages(prev => [...prev, userMessage]);
-    setInput("");
-    setIsLoading(true);
-
-    try {
-      const activeDocs = documents.filter(d => d.active).map(d => d.name);
-      const messageToSend = assessmentResult?.learning_style
-        ? `[My learning style is ${assessmentResult.learning_style}]: ${input}`
-        : input;
-
-      const controller = new AbortController();
-      const data = await apiService.chat(messageToSend, activeDocs, controller.signal);
-      setMessages(prev => [...prev, { sender: "bot", text: data.answer}]);
-    } catch (error) {
-      if (!(error instanceof DOMException && error.name === 'AbortError')) {
-        const detail = error instanceof TypeError
-          ? "Can't reach the EduMind backend at http://127.0.0.1:8000. Is it running?"
-          : (error as Error).message;
-        setMessages(prev => [...prev, { sender: "bot", text: `⚠️ ${detail}` }]);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const botNote = (text: string, error = false): Message => ({ id: newMessageId(), sender: "bot", text, error });
 
   const startAssessment = async () => {
     setIsLoading(true);
@@ -373,7 +298,7 @@ const App: React.FC = () => {
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         console.error("Error fetching questions:", error);
-        setMessages(prev => [...prev, { sender: "bot", text: "Could not fetch assessment questions." }]);
+        setMessages(prev => [...prev, botNote("Could not load the assessment questions. Is the backend running?", true)]);
       }
     } finally {
       setIsLoading(false);
@@ -412,16 +337,13 @@ const App: React.FC = () => {
 
       setMessages(prev => [
         ...prev,
-        {
-          sender: "bot",
-          text: `Assessment complete! Your learning style is: **${data.learning_style}**. ${data.description}`
-        }
+        botNote(`Your learning style is **${data.learning_style}**. ${data.description} I'll shape my explanations around that.`),
       ]);
       setCurrentView("chat");
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         console.error("Error submitting assessment:", error);
-        setMessages(prev => [...prev, { sender: "bot", text: "Error submitting assessment." }]);
+        setMessages(prev => [...prev, botNote("Could not submit the assessment. Please try again.", true)]);
       }
     } finally {
       setIsLoading(false);
@@ -504,28 +426,12 @@ const App: React.FC = () => {
 
   // Render Functions
   const renderChatbot = () => (
-    <div className="chat-content-container">
-      <div className="chat-box" ref={chatBoxRef}>
-        {messages.map((msg, idx) => (
-          <ChatMessage key={idx} message={msg} />
-        ))}
-        {isLoading && <LoadingIndicator />}
-      </div>
-      <div className="chat-input-area">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Type your message..."
-          className="chat-input-field"
-          disabled={isLoading}
-        />
-        <button onClick={sendMessage} className="send-button" disabled={isLoading}>
-          Send
-        </button>
-      </div>
-    </div>
+    <ChatView
+      messages={messages}
+      setMessages={setMessages}
+      activeDocuments={activeDocsForTest}
+      learningStyle={assessmentResult?.learning_style}
+    />
   );
 
   const renderAssessment = () => (
@@ -589,7 +495,7 @@ const App: React.FC = () => {
         <h3>Sources</h3>
         <div className="documents-actions">
           <label htmlFor="pdf-upload" className="upload-button-label small-button">
-            <span className="plus-icon">+</span> Add
+            <Plus size={14} strokeWidth={2.5} /> Add
           </label>
           <input
             type="file"
@@ -604,11 +510,10 @@ const App: React.FC = () => {
       </div>
       {documents.length === 0 && !isLoading ? (
         <div className="placeholder-content">
-          <div className="icon">📄</div>
-          <p>Saved sources will appear here.</p>
+          <div className="icon"><FileText size={30} strokeWidth={1.6} /></div>
+          <p>Your sources will appear here.</p>
           <p className="small-text">
-            Click Add source above to add PDFs, websites, text, videos, or audio files.
-            Or import a file directly from Google Drive.
+            Click Add to upload a PDF. Kimi, tests, mind maps and audio overviews all use the sources you tick.
           </p>
         </div>
       ) : (
@@ -626,30 +531,36 @@ const App: React.FC = () => {
     </div>
   );
 
+  const studioTools = [
+    { key: "audio", icon: <Headphones size={18} />, title: "Audio overview", hint: "Two hosts talk through your sources", onClick: () => setStudioPanel("audio"), active: studioPanel === "audio" },
+    { key: "mindmap", icon: <Network size={18} />, title: "Mind map", hint: "See how the key ideas connect", onClick: () => setCurrentView("mindmap"), active: currentView === "mindmap" },
+    { key: "notes", icon: <NotebookPen size={18} />, title: "Notes", hint: "Write, highlight and summarize", onClick: openNotesPanel, active: isNotesPanelOpen },
+    { key: "reports", icon: <BarChart3 size={18} />, title: "Reports", hint: "Your progress and memory curve", onClick: () => setCurrentView("reports"), active: currentView === "reports" },
+  ];
+
   const renderStudio = () => {
+    if (studioPanel === "audio") {
+      return <AudioOverview documents={activeDocsForTest} onClose={() => setStudioPanel(null)} />;
+    }
     return (
         <div className="studio-container">
           <div className="studio-header">
             <div className="upper">Studio</div>
           </div>
-          <div className="studio-output-grid">
-            <div className="studio-output-item">
-              <div className="output-icon">🔊</div>
-              <p>Audio Overview</p>
-            </div>
-            <div className="studio-output-item" onClick={openNotesPanel}>
-              <div className="output-icon">📝</div>
-              <p>Notes Summary</p>
-            </div>
-            <div className="studio-output-item">
-              <div className="output-icon">🧠</div>
-              <p>Mind Map</p>
-            </div>
-            <div className="studio-output-item" onClick={() => setCurrentView('reports')}>
-              <div className="output-icon">📊</div>
-              <p>Reports</p>
-            </div>
-          </div>
+          <ul className="studio-tools">
+            {studioTools.map(tool => (
+              <li key={tool.key}>
+                <button type="button" className={`studio-tool${tool.active ? " is-active" : ""}`} onClick={tool.onClick}>
+                  <span className={`studio-tool-icon tool-${tool.key}`}>{tool.icon}</span>
+                  <span className="studio-tool-text">
+                    <span className="studio-tool-title">{tool.title}</span>
+                    <span className="studio-tool-hint">{tool.hint}</span>
+                  </span>
+                  <ChevronRight size={16} className="studio-tool-chevron" />
+                </button>
+              </li>
+            ))}
+          </ul>
           <div className="studio-footer">
             {cleanedQuote ? (
               <div className="daily-quote-container">
@@ -726,12 +637,17 @@ const App: React.FC = () => {
         return <TestFeature activeDocuments={activeDocsForTest} />;
       case 'reports':
         return <ReportsFeature assessmentResult={assessmentResult} />;
+      case 'mindmap':
+        return <MindMap documents={activeDocsForTest} />;
       default:
         return renderChatbot();
     }
   };
 
-  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const viewTitles: Record<string, string> = {
+    chat: "Chat", assessment: "Learning style", documents: "Sources", test: "Practice test",
+    reports: "Reports", mindmap: "Mind map", upload: "Upload",
+  };
 
   // JSX
   return (
@@ -2205,6 +2121,214 @@ const App: React.FC = () => {
         }
 
       }
+
+        /* ===== Shell refinements (chat + studio refresh) ===== */
+        :root {
+          --ink: #1f2233;
+          --ink-soft: #4a4f6a;
+          --muted: #6b7090;
+          --line: #e4e6f2;
+          --canvas: #f3f4fa;
+        }
+        body { background-color: var(--canvas); color: var(--ink); }
+        ::selection { background: rgba(67, 97, 238, 0.2); color: inherit; }
+        * { scrollbar-width: thin; scrollbar-color: #cdd2ea transparent; }
+        *::-webkit-scrollbar { width: 8px; height: 8px; }
+        *::-webkit-scrollbar-track { background: transparent; }
+        *::-webkit-scrollbar-thumb { background: #cdd2ea; border-radius: 8px; }
+        *::-webkit-scrollbar-thumb:hover { background: #b3bae0; }
+        :focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+
+        .main-app-container:hover { box-shadow: none; }
+        .main-app-container .top-nav {
+          padding: 12px 24px;
+          background: linear-gradient(115deg, #3f37c9 0%, #4361ee 100%);
+          box-shadow: 0 2px 12px rgba(31, 34, 51, 0.12);
+        }
+        .main-app-container .top-nav .app-logo {
+          font-size: 1.25rem;
+          letter-spacing: -0.01em;
+          gap: 10px;
+        }
+        .app-logo-mark {
+          display: grid;
+          place-items: center;
+          width: 30px;
+          height: 30px;
+          border-radius: 9px;
+          background: rgba(255, 255, 255, 0.18);
+        }
+        .main-app-container .learner-icon {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.72rem;
+          font-weight: 600;
+          letter-spacing: 0.02em;
+          text-transform: capitalize;
+          padding: 5px 10px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.16);
+        }
+        .main-app-container .nav-buttons { gap: 4px; }
+        .main-app-container .nav-buttons button {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 8px 14px;
+          font-size: 0.88rem;
+          background: transparent;
+          border: 0;
+          border-radius: 10px;
+          color: rgba(255, 255, 255, 0.86);
+          transition: background-color 0.15s ease, color 0.15s ease;
+        }
+        .main-app-container .nav-buttons button:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.12);
+          color: #fff;
+          transform: none;
+          box-shadow: none;
+        }
+        .main-app-container .nav-buttons button.active {
+          background: #fff;
+          color: #3f37c9;
+          transform: none;
+          box-shadow: 0 2px 8px rgba(20, 18, 80, 0.2);
+        }
+
+        .main-app-container .main-content-grid {
+          grid-template-columns: minmax(230px, 1fr) minmax(0, 2.3fr) minmax(250px, 1fr);
+          gap: 16px;
+          padding: 16px;
+          background-color: var(--canvas);
+        }
+        .main-app-container .panel {
+          border: 1px solid var(--line);
+          border-radius: 18px;
+          box-shadow: 0 1px 2px rgba(31, 34, 51, 0.04), 0 6px 20px rgba(31, 34, 51, 0.04);
+          padding: 18px;
+        }
+        .main-app-container .panel:hover { box-shadow: 0 1px 2px rgba(31, 34, 51, 0.04), 0 6px 20px rgba(31, 34, 51, 0.04); }
+        .main-app-container .panel:nth-child(2) { padding: 18px 22px 16px; }
+        .main-app-container .panel-header {
+          font-size: 1rem;
+          font-weight: 700;
+          color: var(--ink);
+          margin-bottom: 12px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid var(--line);
+        }
+
+        /* Sources */
+        .main-app-container .document-checkbox {
+          gap: 10px;
+          padding: 10px 36px 10px 12px;
+          background: #f7f8fc;
+          border: 1px solid transparent;
+        }
+        .main-app-container .document-checkbox:hover { background: #eff1fb; border-color: var(--line); transform: none; }
+        .document-file-icon { flex-shrink: 0; color: var(--muted); }
+        .main-app-container .document-name {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 0.86rem;
+          color: var(--ink);
+        }
+        .main-app-container .delete-icon {
+          display: grid;
+          place-items: center;
+          width: 26px;
+          height: 26px;
+          right: 6px;
+          border: 0;
+          border-radius: 8px;
+          background: transparent;
+          color: var(--muted);
+          font-size: inherit;
+        }
+        .main-app-container .delete-icon:hover { background: #fde8e8; color: #b42318; }
+        .main-app-container .delete-icon:focus-visible { opacity: 1; }
+        .main-app-container .upload-button-label { display: inline-flex; align-items: center; gap: 5px; }
+
+        /* Studio */
+        .main-app-container .studio-header {
+          margin-bottom: 12px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid var(--line);
+        }
+        .main-app-container .studio-header .upper,
+        .main-app-container .documents-panel-header h3 {
+          font-size: 1rem;
+          font-weight: 700;
+          color: var(--ink);
+          letter-spacing: 0;
+          margin: 0;
+        }
+        .studio-tools {
+          list-style: none;
+          margin: 4px 0 16px;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .studio-tool {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
+          text-align: left;
+          font: inherit;
+          padding: 10px;
+          border: 1px solid transparent;
+          border-radius: 14px;
+          background: transparent;
+          color: var(--ink);
+          cursor: pointer;
+          transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+        .studio-tool:hover { background: #f6f7fc; border-color: var(--line); }
+        .studio-tool.is-active { background: #eef1ff; border-color: #d5dbfb; }
+        .studio-tool-icon {
+          display: grid;
+          place-items: center;
+          flex-shrink: 0;
+          width: 38px;
+          height: 38px;
+          border-radius: 11px;
+        }
+        .tool-audio { background: #eef1ff; color: #4361ee; }
+        .tool-mindmap { background: #e6f6f3; color: #0f9d8a; }
+        .tool-notes { background: #fdf3e3; color: #c26a05; }
+        .tool-reports { background: #fbe9f2; color: #c0266d; }
+        .studio-tool-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+        .studio-tool-title { font-size: 0.9rem; font-weight: 600; }
+        .studio-tool-hint { font-size: 0.76rem; color: var(--muted); line-height: 1.35; }
+        .studio-tool-chevron { color: #b3b8d4; flex-shrink: 0; transition: transform 0.15s ease, color 0.15s ease; }
+        .studio-tool:hover .studio-tool-chevron { transform: translateX(2px); color: var(--muted); }
+
+        .main-app-container .daily-quote-container {
+          border-left: 0;
+          background: #f7f8fc;
+          border: 1px solid var(--line);
+          border-radius: 14px;
+          padding: 16px 18px;
+          text-align: left;
+        }
+        .main-app-container .quote-text {
+          font-family: "Source Serif 4", Georgia, serif;
+          font-size: 1rem;
+          line-height: 1.5;
+          color: var(--ink-soft);
+        }
+        .main-app-container .quote-label { font-size: 0.68rem; letter-spacing: 0.06em; color: var(--muted); }
+
+        @media (max-width: 1100px) {
+          .main-app-container .main-content-grid { grid-template-columns: minmax(200px, 0.9fr) minmax(0, 2fr) minmax(220px, 0.9fr); }
+          .main-app-container .nav-buttons button { padding: 8px 10px; }
+        }
       `}</style>
 
       {!isAuthenticated ? (
@@ -2217,14 +2341,20 @@ const App: React.FC = () => {
         <div className="main-app-container">
           <div className="top-nav">
             <span className="app-logo">
+              <span className="app-logo-mark" aria-hidden="true"><Sparkles size={16} /></span>
               EduMind
-              {assessmentResult && <span title={assessmentResult.learning_style} className="learner-icon">{getLearnerIcon(assessmentResult.learning_style)}</span>}
+              {assessmentResult && (
+                <span title={`Learning style: ${assessmentResult.learning_style}`} className="learner-icon">
+                  {getLearnerIcon(assessmentResult.learning_style)}
+                  <span>{assessmentResult.learning_style}</span>
+                </span>
+              )}
             </span>
             <div className="nav-buttons">
-              <button onClick={() => setCurrentView('chat')} className={currentView === 'chat' ? 'active' : ''} disabled={currentView === 'assessment'}>Chatbot</button>
-              <button onClick={startAssessment} className={currentView === 'assessment' ? 'active' : ''}>Assessment</button>
-              <button onClick={() => setCurrentView('documents')} className={currentView === 'documents' ? 'active' : ''} disabled={currentView === 'assessment'}>Documents</button>
-              <button onClick={() => setCurrentView('test')} className={currentView === 'test' ? 'active' : ''} disabled={currentView === 'assessment'}>Test</button>
+              <button onClick={() => setCurrentView('chat')} className={currentView === 'chat' ? 'active' : ''} disabled={currentView === 'assessment'}><MessageSquare size={15} /> Chat</button>
+              <button onClick={startAssessment} className={currentView === 'assessment' ? 'active' : ''}><Brain size={15} /> Assessment</button>
+              <button onClick={() => setCurrentView('documents')} className={currentView === 'documents' ? 'active' : ''} disabled={currentView === 'assessment'}><FileText size={15} /> Sources</button>
+              <button onClick={() => setCurrentView('test')} className={currentView === 'test' ? 'active' : ''} disabled={currentView === 'assessment'}><ClipboardCheck size={15} /> Test</button>
             </div>
           </div>
 
@@ -2235,7 +2365,7 @@ const App: React.FC = () => {
 
             <div className="panel">
               <div className="panel-header">
-              <div className="head">{capitalize(currentView)}</div>
+              <div className="head">{viewTitles[currentView] ?? currentView}</div>
               </div>
               <div className="panel-content">
                 {renderMainContent()}
