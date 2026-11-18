@@ -41,7 +41,10 @@ const apiService = {
       body: JSON.stringify({ message, active_documents: activeDocuments }),
       signal
     });
-    if (!response.ok) throw new Error("Chat request failed");
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Chat request failed (${response.status})`);
+    }
     return response.json();
   },
 
@@ -346,7 +349,10 @@ const App: React.FC = () => {
       setMessages(prev => [...prev, { sender: "bot", text: data.answer}]);
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
-        setMessages(prev => [...prev, { sender: "bot", text: "Error talking to server." }]);
+        const detail = error instanceof TypeError
+          ? "Can't reach the EduMind backend at http://127.0.0.1:8000. Is it running?"
+          : (error as Error).message;
+        setMessages(prev => [...prev, { sender: "bot", text: `⚠️ ${detail}` }]);
       }
     } finally {
       setIsLoading(false);

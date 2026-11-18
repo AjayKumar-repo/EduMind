@@ -1,0 +1,15 @@
+# EduMind backend (tested with Python 3.11)
+fastapi==0.117.1
+uvicorn==0.37.0
+python-multipart==0.0.20
+pydantic==2.11.9
+requests==2.32.5
+python-dotenv==1.1.1
+pypdf==6.1.0
+langchain-community==0.3.30
+langchain-chroma==0.2.6
+langchain-huggingface==0.3.1
+langchain-text-splitters==0.3.11
+chromadb==1.1.0
+sentence-transformers==5.1.1
+torch==2.8.0

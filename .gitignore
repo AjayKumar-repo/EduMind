@@ -1,1 +1,30 @@
+# Secrets
 .env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Generated search indexes
+scripts/chroma_store/
+faiss_store/
+scripts/index.faiss
+scripts/chunks.pkl
+
+# User data (uploaded PDFs, chat logs)
+scripts/data/
+data/
+kimi_memory.json
+
+# Node
+node_modules/
+kimi-chat/build/
+
+# Local logs
+logs/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
