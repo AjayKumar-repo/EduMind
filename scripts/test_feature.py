@@ -4,7 +4,7 @@ import json
 import logging
 import random
 import uuid
-from typing import Dict, List
+from typing import Dict, List, Optional, Set
 
 from scripts.llm_config import TEST_MODEL, LLMError, openrouter_chat
 
@@ -77,11 +77,16 @@ def _is_valid(q: Dict, category: str) -> bool:
     )
 
 
-def _questions_for_category(document_chunks: List[str], category: str) -> List[Dict]:
+def _questions_for_category(
+    document_chunks: List[str],
+    category: str,
+    target: int = QUESTIONS_PER_CATEGORY,
+    exclude: Optional[Set[str]] = None,
+) -> List[Dict]:
     collected: List[Dict] = []
-    seen = set()
+    seen = set(exclude or ())
     for attempt in range(MAX_ATTEMPTS_PER_CATEGORY):
-        needed = QUESTIONS_PER_CATEGORY - len(collected)
+        needed = target - len(collected)
         if needed <= 0:
             break
         chunk = random.choice(document_chunks)
@@ -98,7 +103,7 @@ def _questions_for_category(document_chunks: List[str], category: str) -> List[D
                 "options": [str(o) for o in q["options"]],
                 "correctAnswer": q["correctAnswer"],
             })
-            if len(collected) >= QUESTIONS_PER_CATEGORY:
+            if len(collected) >= target:
                 break
     return collected
 
@@ -116,10 +121,19 @@ def create_mcq_test(document_chunks: List[str]) -> Dict:
             results[futures[future]] = future.result()  # re-raises LLMError
 
     final_questions: List[Dict] = []
-    seen_texts = set()
+    seen_texts: Set[str] = set()
     for cat in CATEGORIES:
         for q in results.get(cat, []):
             if q["questionText"] not in seen_texts:
+                seen_texts.add(q["questionText"])
+                final_questions.append(q)
+
+    # Top up any category that came up short (e.g. its question duplicated another category's).
+    for cat in CATEGORIES:
+        missing = QUESTIONS_PER_CATEGORY - sum(q["category"] == cat for q in final_questions)
+        if missing > 0:
+            extra = _questions_for_category(document_chunks, cat, target=missing, exclude=seen_texts)
+            for q in extra:
                 seen_texts.add(q["questionText"])
                 final_questions.append(q)
 
