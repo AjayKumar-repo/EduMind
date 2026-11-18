@@ -56,6 +56,9 @@ class ChatRequest(BaseModel):
 class GenerateTestRequest(BaseModel):
     document_chunks: List[str]
 
+class SummarizeRequest(BaseModel):
+    text: str
+
 
 @app.post("/chat/")
 async def chat_endpoint(req: ChatRequest):
@@ -123,6 +126,45 @@ async def get_daily_quote():
     except Exception as e:
         logging.error(f"Error fetching daily quote from AI service: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate daily quote.")
+
+
+# Summarize highlighted text (keeps the OpenRouter key on the server)
+@app.post("/summarize")
+async def summarize_text(req: SummarizeRequest):
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="No text provided.")
+    if len(text) > 8000:
+        raise HTTPException(status_code=400, detail="Text is too long to summarize (max 8000 characters).")
+
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        logging.error("OPENROUTER_API_KEY not set for summarization.")
+        raise HTTPException(status_code=500, detail="API key for summarization is not configured.")
+
+    data = {
+        "model": "mistralai/mistral-7b-instruct",
+        "messages": [
+            {"role": "user", "content": f'Provide a concise summary or definition for the following: "{text}"'}
+        ],
+    }
+
+    def _call_openrouter():
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            data=json.dumps(data),
+            timeout=60,
+        )
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
+
+    try:
+        summary = await asyncio.to_thread(_call_openrouter)
+        return {"summary": summary.strip()}
+    except Exception as e:
+        logging.error(f"Error summarizing text: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail="Failed to summarize text.")
 
 
 # Assessment Endpoints
