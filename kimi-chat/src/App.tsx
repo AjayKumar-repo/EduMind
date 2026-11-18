@@ -31,8 +31,6 @@ type Document = {
 
 // API Service
 const API_BASE_URL = "http://127.0.0.1:8000";
-// IMPORTANT: Replace with your actual OpenRouter API Key
-const OPENROUTER_API_KEY = "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";
 
 
 const apiService = {
@@ -104,30 +102,20 @@ const apiService = {
     if (!response.ok) throw new Error("Failed to fetch daily quote");
     return response.json();
   },
-  summarizeWithOpenRouter: async (text: string, signal?: AbortSignal) => {
-    if (!OPENROUTER_API_KEY) {
-    return "Error: OpenRouter API key not found. Make sure you have set REACT_APP_OPENROUTER_API_KEY in your .env file and have restarted the server.";
-    }
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  // Summarization goes through the backend so the OpenRouter key never reaches the browser.
+  summarizeText: async (text: string, signal?: AbortSignal): Promise<string> => {
+    const response = await fetch(`${API_BASE_URL}/summarize`, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "mistralai/mistral-7b-instruct", // Or any other model you prefer
-        messages: [
-          { role: "user", content: `Provide a concise summary or definition for the following: "${text}"` }
-        ]
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
       signal
     });
     if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`OpenRouter API request failed: ${errorData.error?.message || 'Unknown error'}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Summarize request failed: ${errorData.detail || response.statusText}`);
     }
     const data = await response.json();
-    return data.choices[0].message.content;
+    return data.summary;
   },
 };
 
@@ -485,7 +473,7 @@ const App: React.FC = () => {
     setSummaryResult("");
     try {
         const controller = new AbortController();
-        const summary = await apiService.summarizeWithOpenRouter(highlightedText, controller.signal);
+        const summary = await apiService.summarizeText(highlightedText, controller.signal);
         setSummaryResult(summary);
     } catch (error) {
         console.error("Error summarizing text:", error);
