@@ -78,6 +78,45 @@ export const generateMindMap = (documents: string[], signal?: AbortSignal) =>
 export const generateAudioScript = (documents: string[], signal?: AbortSignal) =>
   postStudio<AudioScript>("/studio/audio-overview", documents, signal);
 
+// ---------- Notes ----------
+export type Note = {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: number;
+  updatedAt: number;
+  source?: string;
+};
+
+export type NoteAction = "summarize" | "explain" | "key_terms" | "flashcards" | "quiz" | "improve";
+
+async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    });
+  } catch (error) {
+    throw friendly(error);
+  }
+  if (!response.ok) throw new Error(await errorDetail(response));
+  return response.json();
+}
+
+export const notesApi = {
+  list: () => jsonRequest<{ notes: Note[] }>("/notes").then((d) => d.notes),
+  create: (note: { title?: string; body?: string; source?: string }) =>
+    jsonRequest<Note>("/notes", { method: "POST", body: JSON.stringify(note) }),
+  update: (id: string, note: { title?: string; body?: string }) =>
+    jsonRequest<Note>(`/notes/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(note) }),
+  remove: (id: string) => jsonRequest<{ message: string }>(`/notes/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  assist: (text: string, action: NoteAction, signal?: AbortSignal) =>
+    jsonRequest<{ result: string }>("/notes/assist", { method: "POST", body: JSON.stringify({ text, action }), signal }).then(
+      (d) => d.result,
+    ),
+};
+
 export async function resetChat(): Promise<void> {
   try {
     await fetch(`${API_BASE_URL}/chat/reset`, { method: "POST" });

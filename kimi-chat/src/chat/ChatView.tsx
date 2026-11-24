@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUp, Check, Copy, FileText, RotateCcw, Sparkles, Square, SquarePen } from "lucide-react";
-import { resetChat, streamChat } from "../api";
+import { ArrowUp, Check, Copy, FileText, NotebookPen, RotateCcw, Sparkles, Square, SquarePen } from "lucide-react";
+import { notesApi, resetChat, streamChat } from "../api";
 import "./chat.css";
 
 export type ChatMessage = {
@@ -74,17 +74,42 @@ const Markdown: React.FC<{ text: string }> = React.memo(({ text }) => (
   </ReactMarkdown>
 ));
 
-const MessageActions: React.FC<{ text: string; onRetry?: () => void }> = ({ text, onRetry }) => {
+const MessageActions: React.FC<{ text: string; question?: string; onRetry?: () => void }> = ({ text, question, onRetry }) => {
   const [copied, setCopied] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const copy = () =>
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     });
+  const saveToNotes = async () => {
+    if (saveState === "saving" || saveState === "saved") return;
+    setSaveState("saving");
+    try {
+      const title = (question || "Saved from chat").replace(/\s+/g, " ").trim().slice(0, 80);
+      await notesApi.create({ title, body: text, source: "chat" });
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+      window.setTimeout(() => setSaveState("idle"), 2500);
+    }
+  };
+  const saveLabel =
+    saveState === "saved" ? "Saved to Notes" : saveState === "error" ? "Couldn't save. Try again" : "Save to Notes";
   return (
     <div className="ch-actions">
       <button type="button" onClick={copy} aria-label="Copy answer" title="Copy">
         {copied ? <Check size={15} /> : <Copy size={15} />}
+      </button>
+      <button
+        type="button"
+        onClick={saveToNotes}
+        aria-label={saveLabel}
+        title={saveLabel}
+        className={saveState === "saved" ? "is-done" : saveState === "error" ? "is-error" : ""}
+      >
+        {saveState === "saved" ? <Check size={15} /> : <NotebookPen size={15} />}
+        {(saveState === "saved" || saveState === "error") && <span>{saveLabel}</span>}
       </button>
       {onRetry && (
         <button type="button" onClick={onRetry} aria-label="Retry" title="Retry">
@@ -254,9 +279,10 @@ const ChatView: React.FC<Props> = ({ messages, setMessages, activeDocuments, lea
                         <Markdown text={m.text} />
                       </div>
                     )}
-                    {!m.streaming && m.text && (
+                    {!m.streaming && m.text && !m.error && (
                       <MessageActions
                         text={m.text}
+                        question={messages[i - 1]?.sender === "user" ? messages[i - 1].text : undefined}
                         onRetry={i === lastBotIndex && i > 0 && messages[i - 1]?.sender === "user" ? () => retry(i) : undefined}
                       />
                     )}

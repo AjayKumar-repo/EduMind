@@ -1,5 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
-import ReactMarkdown from 'react-markdown';
+import React, { useState, useEffect, useMemo } from "react";
 import {
   BarChart3, Brain, ChevronRight, ClipboardCheck, Ear, Eye, FileText, Hand, Headphones,
   MessageSquare, Network, NotebookPen, Plus, Sparkles, X,
@@ -11,6 +10,7 @@ import LoginPage from './LoginPage'; // Import the new Login page
 import ChatView, { ChatMessage, newMessageId } from './chat/ChatView';
 import AudioOverview from './studio/AudioOverview';
 import MindMap from './studio/MindMap';
+import NotesView from './notes/NotesView';
 
 // Types
 type Message = ChatMessage;
@@ -160,9 +160,8 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isTakingCompulsoryAssessment, setIsTakingCompulsoryAssessment] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const notesTextAreaRef = useRef<HTMLTextAreaElement>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentView, setCurrentView] = useState<"chat" | "assessment" | "upload" | "documents" | "test" | "reports" | "mindmap">("chat");
+  const [currentView, setCurrentView] = useState<"chat" | "assessment" | "upload" | "documents" | "test" | "reports" | "mindmap" | "notes">("chat");
   const [studioPanel, setStudioPanel] = useState<"audio" | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -177,12 +176,7 @@ const App: React.FC = () => {
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
 
-  // New state for Notes Panel and Daily Quote
-  const [isNotesPanelOpen, setIsNotesPanelOpen] = useState(false);
-  const [notesText, setNotesText] = useState("");
-  const [highlightedText, setHighlightedText] = useState("");
-  const [summaryResult, setSummaryResult] = useState("");
-  const [isSummarizing, setIsSummarizing] = useState(false);
+  // Daily quote
   const [dailyQuote, setDailyQuote] = useState<string | null>(null);
 
   // CORRECTED: Moved useMemo to the top level of the component
@@ -384,46 +378,6 @@ const App: React.FC = () => {
     }
   };
 
-  // --- New Handlers for Notes Panel ---
-  const handleHighlight = () => {
-    const textarea = notesTextAreaRef.current;
-    if (textarea) {
-        const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
-        if (selectedText) {
-            setHighlightedText(selectedText);
-        }
-    }
-  };
-
-  const handleSummarize = async () => {
-    if (!highlightedText) return;
-    setIsSummarizing(true);
-    setSummaryResult("");
-    try {
-        const controller = new AbortController();
-        const summary = await apiService.summarizeText(highlightedText, controller.signal);
-        setSummaryResult(summary);
-    } catch (error) {
-        console.error("Error summarizing text:", error);
-        setSummaryResult(`Error: ${error instanceof Error ? error.message : "Failed to get summary."}`);
-    } finally {
-        setIsSummarizing(false);
-    }
-  };
-
-  const handleSaveNotes = () => {
-    // Implement save functionality here (e.g., save to localStorage or an API)
-    console.log("Saving notes:", notesText);
-    alert("Notes saved to console!");
-  };
-
-  const openNotesPanel = () => {
-    setHighlightedText("");
-    setSummaryResult("");
-    setIsNotesPanelOpen(true);
-  };
-
-
   // Render Functions
   const renderChatbot = () => (
     <ChatView
@@ -534,7 +488,7 @@ const App: React.FC = () => {
   const studioTools = [
     { key: "audio", icon: <Headphones size={18} />, title: "Audio overview", hint: "Two hosts talk through your sources", onClick: () => setStudioPanel("audio"), active: studioPanel === "audio" },
     { key: "mindmap", icon: <Network size={18} />, title: "Mind map", hint: "See how the key ideas connect", onClick: () => setCurrentView("mindmap"), active: currentView === "mindmap" },
-    { key: "notes", icon: <NotebookPen size={18} />, title: "Notes", hint: "Write, highlight and summarize", onClick: openNotesPanel, active: isNotesPanelOpen },
+    { key: "notes", icon: <NotebookPen size={18} />, title: "Notes", hint: "Write, save and study with AI", onClick: () => setCurrentView("notes"), active: currentView === "notes" },
     { key: "reports", icon: <BarChart3 size={18} />, title: "Reports", hint: "Your progress and memory curve", onClick: () => setCurrentView("reports"), active: currentView === "reports" },
   ];
 
@@ -578,49 +532,6 @@ const App: React.FC = () => {
     );
   }
 
-  const renderNotesPanel = () => (
-    <div className="notes-panel-overlay">
-        <div className="notes-panel">
-            <div className="notes-panel-header">
-                <h3>My Notes</h3>
-                <button className="notes-close-btn" onClick={() => setIsNotesPanelOpen(false)}>✕</button>
-            </div>
-            <div className="notes-panel-content">
-                <textarea
-                    ref={notesTextAreaRef}
-                    className="notes-textarea"
-                    value={notesText}
-                    onChange={(e) => setNotesText(e.target.value)}
-                    onSelect={handleHighlight}
-                    placeholder="Type your notes here... Then highlight text to summarize."
-                />
-                 {highlightedText && (
-                    <div className="highlight-summary-section">
-                        <p className="highlighted-text-info">
-                            Selected: <strong>"{highlightedText}"</strong>
-                        </p>
-                        <button
-                            className="notes-panel-btn summarize"
-                            onClick={handleSummarize}
-                            disabled={isSummarizing}
-                        >
-                            {isSummarizing ? "Summarizing..." : "Summarize"}
-                        </button>
-                    </div>
-                 )}
-                {summaryResult && (
-                    <div className="summary-result-box">
-                       <ReactMarkdown>{summaryResult}</ReactMarkdown>
-                    </div>
-                )}
-            </div>
-            <div className="notes-panel-actions">
-                <button className="notes-panel-btn save" onClick={handleSaveNotes}>Save Notes</button>
-            </div>
-        </div>
-    </div>
-  );
-
   const activeDocsForTest = useMemo(() =>
     documents.filter(doc => doc.active).map(doc => doc.name),
     [documents]
@@ -639,6 +550,8 @@ const App: React.FC = () => {
         return <ReportsFeature assessmentResult={assessmentResult} />;
       case 'mindmap':
         return <MindMap documents={activeDocsForTest} />;
+      case 'notes':
+        return <NotesView />;
       default:
         return renderChatbot();
     }
@@ -646,7 +559,7 @@ const App: React.FC = () => {
 
   const viewTitles: Record<string, string> = {
     chat: "Chat", assessment: "Learning style", documents: "Sources", test: "Practice test",
-    reports: "Reports", mindmap: "Mind map", upload: "Upload",
+    reports: "Reports", mindmap: "Mind map", notes: "Notes", upload: "Upload",
   };
 
   // JSX
@@ -1379,139 +1292,6 @@ const App: React.FC = () => {
            box-sizing: border-box;
         }
         
-        /* --- New Notes Panel Styles --- */
-        .notes-panel-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.6);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            backdrop-filter: blur(5px);
-            animation: fadeIn 0.3s ease;
-        }
-        .notes-panel {
-            background: #ffffff;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-            width: 90%;
-            max-width: 600px;
-            height: 70vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            animation: slideInUp 0.4s ease;
-        }
-        .notes-panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px 25px;
-            border-bottom: 1px solid #e0e0e0;
-            flex-shrink: 0;
-        }
-        .notes-panel-header h3 {
-            margin: 0;
-            color: var(--primary-color);
-        }
-        .notes-close-btn {
-            background: none;
-            border: none;
-            font-size: 24px;
-            color: var(--text-light);
-            cursor: pointer;
-            transition: color 0.2s ease;
-        }
-        .notes-close-btn:hover {
-            color: var(--danger-color);
-        }
-        .notes-panel-content {
-            flex: 1;
-            padding: 25px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-        }
-        .notes-textarea {
-            width: 100%;
-            height: 40%;
-            min-height: 150px;
-            border: 2px solid #e0e7ff;
-            border-radius: 12px;
-            padding: 15px;
-            font-family: inherit;
-            font-size: 1em;
-            resize: vertical;
-            transition: border-color 0.3s ease, box-shadow 0.3s ease;
-        }
-        .notes-textarea:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.2);
-        }
-        .highlight-summary-section {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #f8f9ff;
-            border-radius: 12px;
-        }
-        .highlighted-text-info {
-            font-size: 0.9em;
-            color: var(--text-color);
-            margin: 0 0 10px 0;
-            word-break: break-word;
-        }
-        .summary-result-box {
-            margin-top: 15px;
-            padding: 15px;
-            background: linear-gradient(to bottom, #f8f9ff, #eef0ff);
-            border-left: 4px solid var(--accent-color);
-            border-radius: 8px;
-            font-size: 0.95em;
-            line-height: 1.6;
-            color: var(--text-color);
-        }
-        .notes-panel-actions {
-            padding: 15px 25px;
-            border-top: 1px solid #e0e0e0;
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            flex-shrink: 0;
-        }
-        .notes-panel-btn {
-            padding: 10px 20px;
-            border-radius: 25px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: none;
-        }
-        .notes-panel-btn.save {
-            background-color: var(--success-color);
-            color: white;
-        }
-        .notes-panel-btn.summarize {
-            background-color: var(--accent-color);
-            color: white;
-        }
-        .notes-panel-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        .notes-panel-btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-        }
-        @keyframes slideInUp {
-            from { transform: translateY(30px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-
         /* --- Animations & other general styles --- */
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -2379,7 +2159,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {isAuthenticated && !isTakingCompulsoryAssessment && isNotesPanelOpen && renderNotesPanel()}
     </>
 
   );
