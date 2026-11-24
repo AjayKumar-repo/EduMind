@@ -15,6 +15,7 @@ from scripts.llm_config import CHAT_MODEL, TEST_MODEL, UTILITY_MODEL, LLMError, 
 from scripts.assessment import router as assessment_router
 from scripts.chatbot import answer_question, clear_history, stream_answer
 from scripts.studio import build_audio_script, build_mindmap
+from scripts import notes_store
 from scripts.ingest import PDF_DIRECTORY, rebuild_vectorstore
 from scripts.reports_feature import router as reports_router
 from scripts.test_feature import create_mcq_test
@@ -76,6 +77,17 @@ class ChatRequest(BaseModel):
 
 class StudioRequest(BaseModel):
     documents: List[str]
+
+
+class NoteIn(BaseModel):
+    title: Optional[str] = None
+    body: Optional[str] = None
+    source: Optional[str] = None
+
+
+class NoteAssistRequest(BaseModel):
+    text: str
+    action: str
 
 
 class GenerateTestRequest(BaseModel):
@@ -300,6 +312,50 @@ async def mindmap_endpoint(req: StudioRequest):
 async def audio_overview_endpoint(req: StudioRequest):
     """Write a two-host podcast script about the selected documents (spoken in the browser)."""
     return await _run_studio(req, build_audio_script, "Audio overview")
+
+
+# --- Notes ---
+
+@app.get("/notes")
+async def list_notes_endpoint():
+    return {"notes": await asyncio.to_thread(notes_store.list_notes)}
+
+
+@app.post("/notes")
+async def create_note_endpoint(note: NoteIn):
+    return await asyncio.to_thread(notes_store.create_note, note.title or "", note.body or "", note.source)
+
+
+@app.put("/notes/{note_id}")
+async def update_note_endpoint(note_id: str, note: NoteIn):
+    updated = await asyncio.to_thread(notes_store.update_note, note_id, note.title, note.body)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Note not found.")
+    return updated
+
+
+@app.delete("/notes/{note_id}")
+async def delete_note_endpoint(note_id: str):
+    if not await asyncio.to_thread(notes_store.delete_note, note_id):
+        raise HTTPException(status_code=404, detail="Note not found.")
+    return {"message": "Note deleted."}
+
+
+@app.post("/notes/assist")
+async def note_assist_endpoint(req: NoteAssistRequest):
+    """Run an AI helper (summarize, explain, flashcards, ...) on note text."""
+    if req.action not in notes_store.ASSIST_PROMPTS:
+        raise HTTPException(status_code=400, detail=f"Unknown action '{req.action}'.")
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Write or select some text first.")
+    if len(text) > 30_000:
+        raise HTTPException(status_code=400, detail="That's too much text at once (max 30,000 characters). Select a smaller part.")
+    try:
+        return {"result": await asyncio.to_thread(notes_store.assist, text, req.action)}
+    except Exception as e:
+        logging.error(f"Note assist error: {e}", exc_info=not isinstance(e, LLMError))
+        raise llm_http_error(e)
 
 
 @app.get("/documents")

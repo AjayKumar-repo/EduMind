@@ -13,8 +13,9 @@ faiss_store/
 scripts/index.faiss
 scripts/chunks.pkl
 
-# User data (uploaded PDFs, chat logs)
+# User data (uploaded PDFs, notes, chat logs)
 scripts/data/
+scripts/user_data/
 data/
 kimi_memory.json
 

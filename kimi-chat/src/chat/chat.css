@@ -348,6 +348,23 @@
   background: #eef0f8;
   color: var(--ch-ink);
 }
+.ch-actions button:has(span) {
+  display: inline-flex;
+  width: auto;
+  gap: 6px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.ch-actions button.is-done {
+  color: #0f7a6b;
+  background: #e6f6f3;
+}
+.ch-actions button.is-error {
+  color: #b42318;
+  background: #fde8e8;
+}
 
 /* ---------- Composer ---------- */
 .ch-composer-wrap {
